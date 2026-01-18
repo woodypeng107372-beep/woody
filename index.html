@@ -9,29 +9,18 @@
     <style>
         :root { --green: #1a4a16; --tile-w: 45px; --tile-h: 62px; }
         body { margin: 0; background: #000; color: white; font-family: "Microsoft JhengHei", sans-serif; overflow: hidden; touch-action: none; }
-        
-        /* 橫屏提醒 */
         @media screen and (orientation: portrait) { #rotate-notice { display: flex; } #game-ui { display: none; } }
         @media screen and (orientation: landscape) { #rotate-notice { display: none; } #game-ui { display: flex; } }
-        
         #rotate-notice { position: fixed; inset: 0; background: #222; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; }
-        
         #game-ui { width: 100vw; height: 100vh; background: radial-gradient(circle, #265c21 0%, #1a4a16 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        
         .table { width: 92%; height: 75%; border: 10px solid #4a3219; background: #265c21; border-radius: 30px; position: relative; box-shadow: inset 0 0 50px rgba(0,0,0,0.5); }
-        
         .hand { display: flex; gap: 4px; position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); }
         .tile { width: var(--tile-w); height: var(--tile-h); background: #fff; border-radius: 6px; color: #000; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 22px; box-shadow: 0 5px 0 #ccc, 0 8px 15px rgba(0,0,0,0.3); }
-
-        /* 封面大廳 */
         #lobby { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10000; display: flex; justify-content: center; align-items: center; }
-        .box { background: linear-gradient(135deg, #fff 0%, #f0f0f0 100%); color: #333; padding: 40px; border-radius: 25px; text-align: center; width: 320px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); border: 3px solid #f0ad4e; }
-        
-        h1 { color: #1a4a16; margin: 0 0 20px 0; font-size: 32px; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); }
-        input { width: 90%; padding: 15px; margin: 10px 0; border: 2px solid #ddd; border-radius: 12px; font-size: 18px; outline: none; }
-        input:focus { border-color: #28a745; }
-        button { width: 100%; padding: 18px; background: #28a745; color: white; border: none; border-radius: 12px; font-weight: bold; font-size: 20px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 0 #155d27; }
-        button:active { transform: translateY(4px); box-shadow: none; }
+        .box { background: linear-gradient(135deg, #fff 0%, #f0f0f0 100%); color: #333; padding: 40px; border-radius: 25px; text-align: center; width: 320px; border: 3px solid #f0ad4e; }
+        h1 { color: #1a4a16; margin: 0 0 20px 0; font-size: 32px; }
+        input { width: 90%; padding: 15px; margin: 10px 0; border: 2px solid #ddd; border-radius: 12px; font-size: 18px; }
+        button { width: 100%; padding: 18px; background: #28a745; color: white; border: none; border-radius: 12px; font-weight: bold; font-size: 20px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -46,7 +35,7 @@
         <h1>🀄 Woody 麻將</h1>
         <input type="text" id="room" placeholder="房號 (例如 888)">
         <input type="text" id="user" placeholder="你的暱稱">
-        <button onclick="start()">開桌</button>
+        <button onclick="start()">開始 Woody 牌局</button>
     </div>
 </div>
 
@@ -58,11 +47,10 @@
     <div class="table">
         <div class="hand" id="my-hand"></div>
     </div>
-    <div id="status" style="color: #fff; margin-top:10px; background: rgba(0,0,0,0.3); padding: 5px 15px; border-radius: 20px;">等待隊友加入...</div>
+    <div id="status" style="color: #fff; margin-top:10px; background: rgba(0,0,0,0.3); padding: 5px 15px; border-radius: 20px;">正在連線中...</div>
 </div>
 
 <script>
-    // 你的 Firebase 金鑰
     const firebaseConfig = {
         apiKey: "AIzaSyDJ1jofbDz5jx1W1UAmBfqdAeCR-YUGMEQ",
         databaseURL: "https://mj-game-85703-default-rtdb.firebaseio.com",
@@ -82,28 +70,35 @@
         document.getElementById('r-id').innerText = rid;
 
         const ref = db.ref('rooms/' + rid);
+        
+        // 只要有人進來，就補滿 4 個人
         ref.transaction((data) => {
-            if(!data) return { players: [{name}], status: 'waiting' };
-            if(data.players.length < 3) {
-                data.players.push({name});
-                if(data.players.length === 3) {
-                    data.players.push({name: "電腦AI"});
-                    data.status = 'playing';
-                }
-                return data;
-            }
-            return;
+            return { 
+                players: [{name: name}, {name: "電腦A"}, {name: "電腦B"}, {name: "電腦C"}], 
+                status: 'playing' 
+            };
         });
 
         ref.on('value', snap => {
             const d = snap.val();
             if(!d) return;
             document.getElementById('p-count').innerText = d.players.length + "/4";
-            if(d.status === 'playing') {
-                document.getElementById('status').innerText = "🀄 遊戲愉快！";
-                drawUI();
-            }
+            document.getElementById('status').innerText = "🀄 遊戲愉快！牌局已開啟";
+            drawUI();
         });
     }
 
-    function drawUI
+    function drawUI() {
+        const hand = document.getElementById('my-hand');
+        hand.innerHTML = "";
+        const tiles = ["一萬", "二萬", "三萬", "四萬", "五萬", "六萬", "七萬", "八萬", "九萬", "中", "發", "白", "東"];
+        tiles.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'tile';
+            div.innerText = t;
+            hand.appendChild(div);
+        });
+    }
+</script>
+</body>
+</html>
