@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Woody 麻將</title>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
+    <style>
+        :root { --green: #1a4a16; --tile-w: 45px; --tile-h: 62px; }
+        body { margin: 0; background: #000; color: white; font-family: "Microsoft JhengHei", sans-serif; overflow: hidden; touch-action: none; }
+        
+        /* 橫屏提醒 */
+        @media screen and (orientation: portrait) { #rotate-notice { display: flex; } #game-ui { display: none; } }
+        @media screen and (orientation: landscape) { #rotate-notice { display: none; } #game-ui { display: flex; } }
+        
+        #rotate-notice { position: fixed; inset: 0; background: #222; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; }
+        
+        #game-ui { width: 100vw; height: 100vh; background: radial-gradient(circle, #265c21 0%, #1a4a16 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        
+        .table { width: 92%; height: 75%; border: 10px solid #4a3219; background: #265c21; border-radius: 30px; position: relative; box-shadow: inset 0 0 50px rgba(0,0,0,0.5); }
+        
+        .hand { display: flex; gap: 4px; position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); }
+        .tile { width: var(--tile-w); height: var(--tile-h); background: #fff; border-radius: 6px; color: #000; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 22px; box-shadow: 0 5px 0 #ccc, 0 8px 15px rgba(0,0,0,0.3); }
+
+        /* 封面大廳 */
+        #lobby { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10000; display: flex; justify-content: center; align-items: center; }
+        .box { background: linear-gradient(135deg, #fff 0%, #f0f0f0 100%); color: #333; padding: 40px; border-radius: 25px; text-align: center; width: 320px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); border: 3px solid #f0ad4e; }
+        
+        h1 { color: #1a4a16; margin: 0 0 20px 0; font-size: 32px; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); }
+        input { width: 90%; padding: 15px; margin: 10px 0; border: 2px solid #ddd; border-radius: 12px; font-size: 18px; outline: none; }
+        input:focus { border-color: #28a745; }
+        button { width: 100%; padding: 18px; background: #28a745; color: white; border: none; border-radius: 12px; font-weight: bold; font-size: 20px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 0 #155d27; }
+        button:active { transform: translateY(4px); box-shadow: none; }
+    </style>
+</head>
+<body>
+
+<div id="rotate-notice">
+    <div style="font-size: 60px;">🔄</div>
+    <h2>請轉至橫向螢幕</h2>
+</div>
+
+<div id="lobby">
+    <div class="box">
+        <h1>🀄 Woody 麻將</h1>
+        <input type="text" id="room" placeholder="房號 (例如 888)">
+        <input type="text" id="user" placeholder="你的暱稱">
+        <button onclick="start()">開桌</button>
+    </div>
+</div>
+
+<div id="game-ui">
+    <div style="margin-bottom:8px; font-weight: bold;">
+        房間: <span id="r-id" style="color:#ffeb3b">--</span> | 
+        在線: <span id="p-count" style="color:#ffeb3b">0/4</span>
+    </div>
+    <div class="table">
+        <div class="hand" id="my-hand"></div>
+    </div>
+    <div id="status" style="color: #fff; margin-top:10px; background: rgba(0,0,0,0.3); padding: 5px 15px; border-radius: 20px;">等待隊友加入...</div>
+</div>
+
+<script>
+    // 你的 Firebase 金鑰
+    const firebaseConfig = {
+        apiKey: "AIzaSyDJ1jofbDz5jx1W1UAmBfqdAeCR-YUGMEQ",
+        databaseURL: "https://mj-game-85703-default-rtdb.firebaseio.com",
+        projectId: "mj-game-85703",
+        appId: "1:221004505436:web:64a9569766627038e2343b"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    function start() {
+        const rid = document.getElementById('room').value;
+        const name = document.getElementById('user').value;
+        if(!rid || !name) return alert("請輸入房號跟暱稱喔！");
+        
+        document.getElementById('lobby').style.display = 'none';
+        document.getElementById('r-id').innerText = rid;
+
+        const ref = db.ref('rooms/' + rid);
+        ref.transaction((data) => {
+            if(!data) return { players: [{name}], status: 'waiting' };
+            if(data.players.length < 3) {
+                data.players.push({name});
+                if(data.players.length === 3) {
+                    data.players.push({name: "電腦AI"});
+                    data.status = 'playing';
+                }
+                return data;
+            }
+            return;
+        });
+
+        ref.on('value', snap => {
+            const d = snap.val();
+            if(!d) return;
+            document.getElementById('p-count').innerText = d.players.length + "/4";
+            if(d.status === 'playing') {
+                document.getElementById('status').innerText = "🀄 遊戲愉快！";
+                drawUI();
+            }
+        });
+    }
+
+    function drawUI
