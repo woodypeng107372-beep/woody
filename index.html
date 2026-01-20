@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Woody 16張 - 翡翠質感版</title>
+    <style>
+        :root { --mj-bg: #1a521a; --gold: #ffd700; --red: #e53935; --blue: #1e88e5; --green: #43a047; --overlay: rgba(0,0,0,0.85); }
+        body, html { margin: 0; padding: 0; height: 100%; background: #000; font-family: sans-serif; overflow: hidden; color: white; }
+
+        /* 大廳 */
+        #lobby { position: fixed; inset: 0; background: radial-gradient(circle, #2d5a2d, #051a05); z-index: 10000; display: flex; align-items: center; justify-content: center; }
+        .panel { background: #f0f0f0; padding: 25px; border-radius: 15px; width: 280px; color: #333; border: 4px solid var(--gold); box-shadow: 0 0 30px #000; }
+        .input-group { margin-bottom: 12px; }
+        .input-group label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px; }
+        .input-group input { width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        .btn-box { display: flex; gap: 8px; margin-top: 15px; }
+        .btn-m { flex: 1; padding: 12px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; font-size: 15px; }
+
+        /* 遊戲介面 */
+        #game-ui { display: none; flex-direction: column; height: 100vh; background: var(--mj-bg); }
+        #status { height: 45px; background: #000; display: flex; align-items: center; padding: 0 15px; justify-content: space-between; border-bottom: 2px solid var(--gold); font-size: 13px; color: var(--gold); }
+        #pool { flex: 1; padding: 15px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; overflow-y: auto; }
+        
+        .hand-area { background: #000; padding: 10px 0; border-top: 2px solid #444; }
+        #action-bar { height: 45px; display: flex; justify-content: center; gap: 8px; align-items: center; }
+        #my-display { display: flex; justify-content: center; align-items: flex-end; gap: 10px; min-height: 60px; padding: 0 10px; }
+
+        /* 牌面 */
+        .tile { width: 32px; height: 46px; background: #fff; border-radius: 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #000; box-shadow: 0 3px 0 #999, 0 4px 8px rgba(0,0,0,0.3); border: 1px solid #ccc; flex-shrink: 0; cursor: pointer; }
+        .tile-txt { font-size: 20px; font-weight: 900; line-height: 1; }
+        .tile-type { font-size: 9px; font-weight: bold; }
+        .selected { transform: translateY(-12px); border: 2px solid var(--gold); box-shadow: 0 0 10px var(--gold); }
+        .is-meld { background: #ddd; pointer-events: none; opacity: 0.9; box-shadow: 0 1px 0 #888; }
+        
+        /* 自定義彈窗 (流局) */
+        #game-overlay { display: none; position: fixed; inset: 0; background: var(--overlay); z-index: 20000; flex-direction: column; align-items: center; justify-content: center; }
+        .overlay-card { background: #fff; color: #333; padding: 30px; border-radius: 20px; text-align: center; border: 5px solid var(--gold); }
+
+        .btn-act { padding: 8px 14px; border: none; border-radius: 5px; background: #e65100; color: white; font-weight: bold; cursor: pointer; box-shadow: 0 2px 0 #bf360c; }
+    </style>
+</head>
+<body>
+
+<div id="lobby">
+    <div class="panel">
+        <h2 style="margin:0 0 15px 0; text-align:center;">🀄 Woody 麻將</h2>
+        <div class="input-group">
+            <label>玩家姓名</label>
+            <input type="text" id="pName" placeholder="輸入名稱...">
+        </div>
+        <div class="input-group">
+            <label>聯機房號</label>
+            <input type="text" id="rCode" placeholder="預設 8888">
+        </div>
+        <div class="btn-box">
+            <button onclick="startGame(true)" class="btn-m" style="background:#1565c0;">單機練習</button>
+            <button onclick="startGame(false)" class="btn-m" style="background:#2e7d32;">聯機對戰</button>
+        </div>
+    </div>
+</div>
+
+<div id="game-ui">
+    <div id="status">
+        <div id="info-name">--</div>
+        <div id="info-wall">🀄 剩餘: --</div>
+        <div id="info-msg">載入中</div>
+    </div>
+    <div id="pool"></div>
+    <div class="hand-area">
+        <div id="action-bar"></div>
+        <div id="my-display">
+            <div id="my-melds" style="display:flex; gap:5px;"></div>
+            <div id="my-hand" style="display:flex; gap:4px;"></div>
+        </div>
+    </div>
+</div>
+
+<div id="game-overlay">
+    <div class="overlay-card">
+        <h1 style="margin-top:0; color:#c62828;">流 局</h1>
+        <p style="font-size:18px; font-weight:bold;">牌堆已用盡，本局結束。</p>
+        <button onclick="location.reload()" class="btn-m" style="background:#2e7d32; width:150px; margin-top:10px;">回大廳</button>
+    </div>
+</div>
+
+<script>
+    let state = { wall:[], pool:[], turn:0, phase:"draw", wait:false, p:[], melds:[], isAI:false, waitTimer:null };
+    let selectedIdx = null;
+    const suits = ["萬", "筒", "條"], nums = ["一", "二", "三", "四", "五", "六", "七", "八", "九"];
+
+    function startGame(isSolo) {
+        const name = document.getElementById('pName').value || "玩家";
+        const code = isSolo ? Math.floor(Math.random()*9999).toString() : (document.getElementById('rCode').value || "8888");
+        document.getElementById('lobby').style.display = 'none';
+        document.getElementById('game-ui').style.display = 'flex';
+        document.getElementById('info-name').innerText = `${name} | 房號:${code}`;
+        initDeck(code);
+    }
+
+    function initDeck(seedStr) {
+        let seed = 0; for(let i=0; i<seedStr.length; i++) seed += seedStr.charCodeAt(i);
+        let deck = [];
+        suits.forEach(s => nums.forEach((n,i) => { for(let k=0; k<4; k++) deck.push({n, s, v:i+1}); }));
+        for(let k=0; k<4; k++) deck.push({n:"中", s:"字", v:0});
+        const seededRand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+        for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(seededRand() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+        state.wall = deck; state.p = [];
+        for(let i=0; i<4; i++) state.p[i] = state.wall.splice(0, 16);
+        state.melds = []; state.pool = []; state.turn = 0; state.phase = "draw";
+        updateUI();
+    }
+
+    function canPong(hand, last) { return hand.filter(t => t.s === last.s && t.n === last.n).length >= 2; }
+    function canChi(hand, last) {
+        if (last.s === "字") return false;
+        let s = hand.filter(t => t.s === last.s).map(t => t.v);
+        return (s.includes(last.v-1) && s.includes(last.v+1)) || (s.includes(last.v-1) && s.includes(last.v-2)) || (s.includes(last.v+1) && s.includes(last.v+2));
+    }
+
+    function updateUI() {
+        if (state.wall.length === 0 && state.phase === "draw") { 
+            document.getElementById('game-overlay').style.display = 'flex';
+            return; 
+        }
+        
+        document.getElementById('info-wall').innerText = `🀄 剩餘: ${state.wall.length}`;
+        const isMyTurn = (state.turn === 0);
+        document.getElementById('info-msg').innerText = isMyTurn ? "👉 你的回合" : (state.wait ? "🔍 攔截偵測中" : `P${state.turn+1} 行動中`);
+
+        renderHand(); renderPool(); renderMelds();
+        const bar = document.getElementById('action-bar'); bar.innerHTML = "";
+        addBtn("自動理牌", autoSort);
+
+        if (isMyTurn && !state.wait) {
+            if (state.phase === "draw") addBtn("摸牌", drawTile);
+            else if (selectedIdx !== null) addBtn("確認出牌", playTile);
+        } else if (!isMyTurn && state.wait && state.pool.length > 0) {
+            let last = state.pool[state.pool.length - 1];
+            let canP = canPong(state.p[0], last);
+            let canC = (state.turn === 3 && canChi(state.p[0], last));
+            
+            if (canP) addBtn("碰", () => doIntercept('pong'));
+            if (canC) addBtn("吃", () => doIntercept('chi'));
+            addBtn("跳過", () => { clearTimeout(state.waitTimer); state.wait = false; nextTurn(); });
+        }
+
+        if (!isMyTurn && !state.wait && !state.isAI) {
+            state.isAI = true; setTimeout(runAI, 1000);
+        }
+    }
+
+    function runAI() {
+        let idx = state.turn;
+        if (state.phase === "draw") {
+            state.p[idx].push(state.wall.shift());
+            state.phase = "play"; state.isAI = false; updateUI();
+        } else {
+            let last = state.p[idx].splice(0, 1)[0];
+            state.pool.push(last);
+            state.wait = true; state.isAI = false; 
+            
+            // 判斷玩家能否攔截
+            let waitTime = (canPong(state.p[0], last) || (state.turn === 3 && canChi(state.p[0], last))) ? 4000 : 2000;
+            updateUI();
+
+            state.waitTimer = setTimeout(() => {
+                if (state.wait) { state.wait = false; nextTurn(); }
+            }, waitTime);
+        }
+    }
+
+    function doIntercept(type) {
+        clearTimeout(state.waitTimer);
+        let last = state.pool.pop();
+        if (type === 'pong') {
+            for(let k=0; k<2; k++) {
+                let i = state.p[0].findIndex(t => t.n === last.n && t.s === last.s);
+                state.p[0].splice(i, 1);
+            }
+            state.melds.push([last, last, last]);
+        } else if (type === 'chi') {
+            let v = last.v;
+            let options = [[v-1, v+1], [v-2, v-1], [v+1, v+2]];
+            let combo = options.find(opt => opt.every(val => state.p[0].some(t => t.s === last.s && t.v === val)));
+            combo.forEach(val => {
+                let i = state.p[0].findIndex(t => t.s === last.s && t.v === val);
+                state.p[0].splice(i, 1);
+            });
+            state.melds.push([{...last, v:combo[0], n:nums[combo[0]-1]||last.n}, {...last, v:combo[1], n:nums[combo[1]-1]||last.n}, last]);
+        }
+        state.turn = 0; state.phase = "play"; state.wait = false; updateUI();
+    }
+
+    function renderHand() {
+        const h = document.getElementById('my-hand'); h.innerHTML = "";
+        state.p[0].forEach((t, i) => {
+            const d = document.createElement('div');
+            d.className = `tile ${selectedIdx === i ? 'selected' : ''}`;
+            let clr = t.s==="萬"? "var(--red)": t.s==="筒"? "var(--blue)": "var(--green)";
+            d.innerHTML = `<span class="tile-txt" style="color:${clr}">${t.n}</span><span class="tile-type" style="color:${clr}">${t.s}</span>`;
+            d.onclick = () => {
+                if (selectedIdx === i) selectedIdx = null;
+                else if (selectedIdx !== null) {
+                    let move = state.p[0].splice(selectedIdx, 1)[0];
+                    state.p[0].splice(i, 0, move); selectedIdx = null;
+                } else selectedIdx = i;
+                updateUI();
+            };
+            h.appendChild(d);
+        });
+    }
+
+    function renderPool() {
+        const p = document.getElementById('pool'); p.innerHTML = "";
+        state.pool.forEach(t => {
+            const d = document.createElement('div'); d.className = "tile is-meld";
+            let clr = t.s==="萬"? "var(--red)": t.s==="筒"? "var(--blue)": "var(--green)";
+            d.innerHTML = `<span class="tile-txt" style="color:${clr}">${t.n}</span><span class="tile-type" style="color:${clr}">${t.s}</span>`;
+            p.appendChild(d);
+        });
+    }
+
+    function renderMelds() {
+        const m = document.getElementById('my-melds'); m.innerHTML = "";
+        state.melds.forEach(grp => {
+            const g = document.createElement('div'); g.style.display="flex"; g.style.gap="2px";
+            grp.forEach(t => {
+                const d = document.createElement('div'); d.className = "tile is-meld";
+                let clr = t.s==="萬"? "var(--red)": t.s==="筒"? "var(--blue)": "var(--green)";
+                d.innerHTML = `<span class="tile-txt" style="color:${clr}">${t.n}</span><span class="tile-type" style="color:${clr}">${t.s}</span>`;
+                g.appendChild(d);
+            });
+            m.appendChild(g);
+        });
+    }
+
+    function drawTile() { state.p[0].push(state.wall.shift()); state.phase = "play"; updateUI(); }
+    function playTile() {
+        state.pool.push(state.p[0].splice(selectedIdx, 1)[0]);
+        selectedIdx = null; state.wait = true; updateUI();
+        state.waitTimer = setTimeout(() => { if (state.wait) { state.wait = false; nextTurn(); } }, 2000);
+    }
+    function nextTurn() { state.turn = (state.turn + 1) % 4; state.phase = "draw"; updateUI(); }
+    function autoSort() {
+        const o = {"字":1, "萬":2, "筒":3, "條":4};
+        state.p[0].sort((a,b) => (o[a.s] - o[b.s]) || (a.v - b.v));
+        selectedIdx = null; updateUI();
+    }
+    function addBtn(txt, fn) {
+        const b = document.createElement('button'); b.className = "btn-act";
+        b.innerText = txt; b.onclick = fn; document.getElementById('action-bar').appendChild(b);
+    }
+</script>
+</body>
+</html>
